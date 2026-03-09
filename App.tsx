@@ -614,6 +614,19 @@ export default function App() {
                                      shipments: matching
                                    });
                                  }}
+                                 onAtaClick={(d) => {
+                                   const targetDate = d.date ? new Date(d.date).toISOString().split('T')[0] : null;
+                                   if (!targetDate) return;
+                                   const matching = filteredShipments.filter(s => {
+                                     if (!s.ata) return false;
+                                     return s.ata.toISOString().split('T')[0] === targetDate;
+                                   });
+                                   setModalData({
+                                     isOpen: true,
+                                     weekLabel: `Vessel Arrivals (ATA) - ${d.label}`,
+                                     shipments: matching
+                                   });
+                                 }}
                                />
                             )}
                          </div>

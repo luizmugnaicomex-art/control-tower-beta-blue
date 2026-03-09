@@ -226,6 +226,7 @@ export interface ChartData {
     label: string;
     readyCount: number;
     deliveredCount: number;
+    ataCount: number;
     runningBalance: number;
     isWeekend: boolean;
   }>;

@@ -23,6 +23,7 @@ interface ChartsGridProps {
     data: ChartData;
     onLeadTimeClick?: (data: any) => void;
     onCargoReadyClick?: (data: any) => void;
+    onAtaClick?: (data: any) => void;
 }
 
 const chartColors = [
@@ -157,7 +158,7 @@ const ChartContainer: React.FC<{
     );
 };
 
-const ChartsGrid: React.FC<ChartsGridProps> = ({ data, onLeadTimeClick, onCargoReadyClick }) => {
+const ChartsGrid: React.FC<ChartsGridProps> = ({ data, onLeadTimeClick, onCargoReadyClick, onAtaClick }) => {
     const [maximizedChart, setMaximizedChart] = useState<string | null>(null);
 
     const getSum = (dataset: { value: number }[]) => dataset.reduce((acc, curr) => acc + curr.value, 0);
@@ -488,6 +489,19 @@ const ChartsGrid: React.FC<ChartsGridProps> = ({ data, onLeadTimeClick, onCargoR
                         <Tooltip content={<CustomTooltip />} />
                         <Legend wrapperStyle={{ fontSize: labelSize, fontWeight: 800, textTransform: 'uppercase', paddingTop: '30px' }} />
                         
+                        {/* Vessel Arrivals (ATA) */}
+                        <Bar 
+                            dataKey="ataCount" 
+                            name="Vessel Arrivals (ATA)" 
+                            fill="#EF4444" 
+                            radius={[6, 6, 0, 0]}
+                            opacity={0.8}
+                            onClick={(data) => onAtaClick?.(data)}
+                            style={{ cursor: onAtaClick ? 'pointer' : 'default' }}
+                        >
+                            <LabelList dataKey="ataCount" position="top" fontSize={labelSize} fill="#1e293b" fontWeight={900} />
+                        </Bar>
+
                         {/* Supply Inflow */}
                         <Bar 
                             dataKey="readyCount" 
@@ -547,7 +561,7 @@ const ChartsGrid: React.FC<ChartsGridProps> = ({ data, onLeadTimeClick, onCargoR
             case 'bonded_flow': return { title: "Bonded Flow Analysis", subtitle: "Total containers placed in bonded area vs successfully picked units." };
             case 'carrier_leadtime': return { title: "Carrier Performance (Lead Time)", subtitle: "Average transit days from port departure to final warehouse delivery." };
             case 'romaneio_distribution': return { title: "Romaneio Status Distribution", subtitle: "Tracking of shipments with completed vs pending romaneios (Column BD)." };
-            case 'cargo_ready_comparison': return { title: "Cargo Ready vs Delivered Comparison", subtitle: "Comparison between containers ready (Column Z) and units actually delivered per day." };
+            case 'cargo_ready_comparison': return { title: "Cargo Ready vs Delivered Comparison", subtitle: "Comparison between vessel arrivals (ATA), containers ready (Column Z), and units actually delivered per day." };
             default: return { title: "Chart", subtitle: "" };
         }
     };

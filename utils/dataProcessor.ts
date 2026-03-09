@@ -703,7 +703,7 @@ export const calculateDashboardData = (shipments: Shipment[]): { kpis: KpiData, 
     };
 
     // Calculate Cargo Ready Comparison
-    const cargoReadyMap: Record<string, { date: Date; label: string; readyCount: number; deliveredCount: number; isWeekend: boolean }> = {};
+    const cargoReadyMap: Record<string, { date: Date; label: string; readyCount: number; deliveredCount: number; ataCount: number; isWeekend: boolean }> = {};
 
     shipments.forEach(s => {
         // Process Cargo Ready Dates
@@ -718,6 +718,7 @@ export const calculateDashboardData = (shipments: Shipment[]): { kpis: KpiData, 
                     label: dateObj.toLocaleDateString(),
                     readyCount: 0,
                     deliveredCount: 0,
+                    ataCount: 0,
                     isWeekend: dayOfWeek === 0 || dayOfWeek === 6
                 };
             }
@@ -736,10 +737,30 @@ export const calculateDashboardData = (shipments: Shipment[]): { kpis: KpiData, 
                     label: dateObj.toLocaleDateString(),
                     readyCount: 0,
                     deliveredCount: 0,
+                    ataCount: 0,
                     isWeekend: dayOfWeek === 0 || dayOfWeek === 6
                 };
             }
             cargoReadyMap[dayKey].deliveredCount++;
+        }
+
+        // Process ATA Dates for the same comparison
+        if (s.ata) {
+            const dateObj = new Date(s.ata);
+            dateObj.setHours(0,0,0,0);
+            const dayKey = dateObj.toISOString().split('T')[0];
+            if (!cargoReadyMap[dayKey]) {
+                const dayOfWeek = dateObj.getDay();
+                cargoReadyMap[dayKey] = {
+                    date: dateObj,
+                    label: dateObj.toLocaleDateString(),
+                    readyCount: 0,
+                    deliveredCount: 0,
+                    ataCount: 0,
+                    isWeekend: dayOfWeek === 0 || dayOfWeek === 6
+                };
+            }
+            cargoReadyMap[dayKey].ataCount++;
         }
     });
 

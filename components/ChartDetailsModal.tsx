@@ -26,6 +26,7 @@ const ChartDetailsModal: React.FC<ChartDetailsModalProps> = ({ isOpen, onClose, 
     const isDemurrageView = (weekLabel || '').toLowerCase().includes('demurrage') || (weekLabel || '').toLowerCase().includes('risk');
     const isClearanceView = (weekLabel || '').toLowerCase().includes('clearance') || (weekLabel || '').toLowerCase().includes('customs');
     const isCargoReadyView = (weekLabel || '').toLowerCase().includes('cargo ready');
+    const isAtaView = (weekLabel || '').toLowerCase().includes('vessel arrivals');
     const isProjectedView = (weekLabel || '').toLowerCase().includes('projected');
     const isPipelineView = (weekLabel || '').toLowerCase().includes('pipeline') || (weekLabel || '').toLowerCase().includes('week drilldown');
 
@@ -428,7 +429,7 @@ const ChartDetailsModal: React.FC<ChartDetailsModalProps> = ({ isOpen, onClose, 
                                                             <th className="px-6 py-4 text-left text-[10px] font-black text-slate-500 uppercase tracking-wider">Customs Ch.</th>
                                                             <th className="px-6 py-4 text-right text-[10px] font-black text-slate-500 uppercase tracking-wider">NF Date</th>
                                                         </>
-                                                    ) : isCargoReadyView ? (
+                                                    ) : isCargoReadyView || isAtaView ? (
                                                         <>
                                                             <th className="px-6 py-4 text-left text-[10px] font-black text-slate-500 uppercase tracking-wider">ATA Port</th>
                                                             <th className="px-6 py-4 text-left text-[10px] font-black text-slate-500 uppercase tracking-wider">Cargo Ready</th>
@@ -484,7 +485,7 @@ const ChartDetailsModal: React.FC<ChartDetailsModalProps> = ({ isOpen, onClose, 
                                                                         {isValidDate(s.dateNF) ? s.dateNF.toLocaleDateString() : 'In Process'}
                                                                     </td>
                                                                 </>
-                                                            ) : isCargoReadyView ? (
+                                                            ) : isCargoReadyView || isAtaView ? (
                                                                 <>
                                                                     <td className="px-6 py-4 text-xs font-medium text-slate-400">{isValidDate(s.ata) ? s.ata.toLocaleDateString() : '-'}</td>
                                                                     <td className="px-6 py-4 text-xs font-black text-slate-800">{isValidDate(s.cargoReadyDate) ? s.cargoReadyDate.toLocaleDateString() : '-'}</td>

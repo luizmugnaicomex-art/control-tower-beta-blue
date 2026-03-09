@@ -114,13 +114,13 @@ export const processRawData = (data: any[][]): { shipments: Shipment[], carriers
         shipper: findHeaderIndex('SHIPPER'),
         shipowner: findHeaderIndex('SHIPOWNER', 'ARMADOR', 'SHIP OWNER', 'OWNER'), 
         vesselName: findHeaderIndex('ARRIVAL VESSEL', 'VESSEL', 'VESSEL NAME', 'SHIP', 'NAVIO', 'MOTHER VESSEL'),
-        cargo: findHeaderIndex('CARGO', 'COMMODITY', 'GOODS', 'DESCRIPTION', 'PRODUCT', 'MATERIAL', 'MERCHANDISE', 'DESCRIPTION OF GOODS'),
-        containerType: findHeaderIndex('LOADING TYPE', 'CONTAINER TYPE', 'TYPE', 'LOAD TYPE', 'FCL/LCL', 'SERVICE TYPE', 'TIPO'),
+        cargo: findHeaderIndex('CARGO', 'COMMODITY', 'GOODS', 'DESCRIPTION', 'PRODUCT', 'MATERIAL', 'MERCHANDISE', 'DESCRIPTION OF GOODS', 'MERCADORIA', 'TYPE OF MERCHANDISE'),
+        containerType: findHeaderIndex('LOADING TYPE', 'CONTAINER TYPE', 'TYPE', 'LOAD TYPE', 'FCL/LCL', 'SERVICE TYPE', 'TIPO', 'CARGO TYPE', 'TIPO DE CARGA', 'TYPE OF CARGO'),
         incoterm: findHeaderIndex('INCOTERM', 'TERM', 'INCOTERMS'),
-        bondedWarehouse: findHeaderIndex('TERMINAL', 'BONDED WAREHOUSE', 'ARMAZEM', 'DEPOT', 'LOCAL', 'RECINTO', 'PICK UP LOCATION', 'LOCAL DE RETIRADA', 'DESTINATION TERMINAL'),
+        bondedWarehouse: findHeaderIndex('TERMINAL', 'BONDED WAREHOUSE', 'ARMAZEM', 'DEPOT', 'LOCAL', 'RECINTO', 'PICK UP LOCATION', 'LOCAL DE RETIRADA', 'DESTINATION TERMINAL', 'ARMAZÉM'),
         depot: findHeaderIndex('DEPOT', 'DEPOT RETURN', 'LOCAL DE DEVOLUÇÃO'), // Column AZ
-        ata: findHeaderIndex('ATA', 'ARRIVAL', 'DISCHARGE DATE'),
-        deliveryByd: findHeaderIndex('DELIVERY DATE AT BYD', 'DELIVERY DATE', 'DATA ENTREGA'),
+        ata: findHeaderIndex('ATA', 'ARRIVAL', 'DISCHARGE DATE', 'ACTUAL ETA', 'ETA', 'ARRIVAL DATE'),
+        deliveryByd: findHeaderIndex('DELIVERY DATE AT BYD', 'DELIVERY DATE', 'DATA ENTREGA', 'DELIVERED', 'ENTREGUE'),
         estimatedDelivery: findHeaderIndex('ESTIMATED DELIVERY DATE', 'ESTIMATED DELIVERY'),
         demurrageCost: findHeaderIndex('COST DEMURRAGE TOTAL', 'DEMURRAGE', 'DEMURRAGE COST'),
         parametrization: findHeaderIndex('PARAMETRIZATION', 'CUSTOMS CHANNEL', 'CANAL'),
@@ -133,11 +133,12 @@ export const processRawData = (data: any[][]): { shipments: Shipment[], carriers
         actualDepotReturnDate: findHeaderIndex('ACTUAL DEPOT RETURN DATE', 'ACTUAL RETURN', 'DEVOLUCAO VAZIO', 'DATA DEVOLUÇÃO'),
         deadlineReturnDate: findHeaderIndex('DEADLINE RETURN CNTR', 'DEADLINE RETURN', 'DEADLINE', 'PRAZO DEVOLUÇÃO', 'END OF FREE TIME'), 
         estimatedDepotDate: findHeaderIndex('ESTIMATED DEPOT DATE', 'ESTIMATED RETURN'),
-        freeTimeDate: findHeaderIndex('FREE TIME', 'FREE DAYS'),
+        freeTimeDate: findHeaderIndex('FREE TIME', 'FREE DAYS', 'FREETIME', 'FREE_TIME', 'FREE TIME END', 'FREE TIME LIMIT', 'DT FREE TIME'),
         totalCost: findHeaderIndex('TOTAL COST', 'TOTAL', 'TOTAL INTERNATIONAL COSTS'),
         taxCost: findHeaderIndex('TOTAL TAXES', 'TAXES', 'TAX', 'IMPOSTOS'),
         extraCost: findHeaderIndex('TOTAL EXTRA COSTS', 'EXTRA COSTS', 'EXTRA STORAGE'),
         madeRomaneio: findHeaderIndex('MADE ROMANEIO', 'ROMANEIO', 'STATUS ROMANEIO'),
+        status: findHeaderIndex('STATUS', 'Status'),
     };
 
     const carriers = new Set<string>();
@@ -212,6 +213,7 @@ export const processRawData = (data: any[][]): { shipments: Shipment[], carriers
         const containerType = indices.containerType !== -1 ? String(row[indices.containerType] || '').trim() : '';
         const incoterm = indices.incoterm !== -1 ? String(row[indices.incoterm] || '').trim().toUpperCase() : '';
         const madeRomaneio = indices.madeRomaneio !== -1 ? String(row[indices.madeRomaneio] || 'NO').trim().toUpperCase() : 'NO';
+        const status = indices.status !== -1 ? String(row[indices.status] || '').trim() : '';
         
         let bondedWarehouse = indices.bondedWarehouse !== -1 ? String(row[indices.bondedWarehouse] || 'Unknown').trim() : 'Unknown';
         if (bondedWarehouse === '') bondedWarehouse = 'Unknown';
@@ -314,6 +316,7 @@ export const processRawData = (data: any[][]): { shipments: Shipment[], carriers
             detentionRisk: demurrageDays, 
             portToCargoReady: dateDiffInDays(ataDate, cargoReadyDate),
             madeRomaneio,
+            status,
         };
     }).filter((s): s is Shipment => s !== null);
 
@@ -452,7 +455,10 @@ export const calculateDashboardData = (shipments: Shipment[]): { kpis: KpiData, 
         p.drainDaysGate = Math.ceil(p.volume / GATE_CAPACITY_DAY);
         p.drainDaysFactory = Math.ceil(p.volume / FACTORY_CAPACITY_DAY);
         const isPast = p.year < currentYear || (p.year === currentYear && p.weekNum < currentWeek);
-        if (isPast) p.status = 'PRAZO VENCIDO';
+        const isCompleted = p.deliveredCount === p.volume && p.volume > 0;
+
+        if (isCompleted) p.status = 'COMPLETED';
+        else if (isPast) p.status = 'PRAZO VENCIDO';
         else if (p.drainDaysFactory > 10) p.status = 'TIME COLLISION';
         else p.status = 'SAFE';
         return p;
@@ -505,6 +511,49 @@ export const calculateDashboardData = (shipments: Shipment[]): { kpis: KpiData, 
 
     const financialExposure = estimateFinancialExposure(projectedBacklog, projectedDaysMap);
 
+    let inTransit = 0;
+    let portFiscal = 0;
+    let bondedStock = 0;
+    let ftRisk7d = 0;
+    let ftRisk3d = 0;
+    let bondedDwellSum = 0;
+    let bondedDwellCount = 0;
+    let bondedDwellGt7 = 0;
+    let bondedDwellGt10 = 0;
+    let bondedDwellMax = 0;
+
+    shipments.forEach((s) => {
+        const status = (s.status || '').toUpperCase(); // Assuming status exists, or use a fallback
+        const term = (s.bondedWarehouse || '').toUpperCase();
+
+        if (status.includes("MAR") || status.includes("TRANSIT")) inTransit++;
+        if (status.includes("PORTO") || status.includes("FISCAL") || status.includes("CUSTOMS")) portFiscal++;
+
+        const isBonded = term && term !== "OUTROS" && term !== "UNKNOWN" && !s.deliveryByd;
+        if (isBonded) bondedStock++;
+
+        const eta = s.ata || s.estimatedDelivery;
+        const ft = s.freeTimeDate;
+        if (ft && !s.actualDepotReturnDate) {
+            const d = Math.ceil((ft.getTime() - todayUTC.getTime()) / 86400000);
+            if (d <= 7) ftRisk7d++;
+            if (d <= 3) ftRisk3d++;
+        }
+
+        if (isBonded) {
+            const cleared = s.channelDate || s.dateNF;
+            const dwellStart = cleared || eta;
+            if (dwellStart) {
+                const dwell = Math.max(0, Math.floor((todayUTC.getTime() - dwellStart.getTime()) / 86400000));
+                bondedDwellSum += dwell;
+                bondedDwellCount += 1;
+                if (dwell > 7) bondedDwellGt7++;
+                if (dwell > 10) bondedDwellGt10++;
+                if (dwell > bondedDwellMax) bondedDwellMax = dwell;
+            }
+        }
+    });
+
     const kpis: KpiData = {
         totalShipments,
         deliveredCount: deliveredShipments.length,
@@ -536,7 +585,17 @@ export const calculateDashboardData = (shipments: Shipment[]): { kpis: KpiData, 
         pendingRomaneioCount,
         flaggedContainersCount,
         projectedBacklogCrossing10Days: projectedBacklog.length,
-        financialExposure
+        financialExposure,
+        inTransit,
+        portFiscal,
+        bondedStock,
+        ftRisk7d,
+        ftRisk3d,
+        bondedDwellSum,
+        bondedDwellCount,
+        bondedDwellGt7,
+        bondedDwellGt10,
+        bondedDwellMax
     };
     
     const leadTimeTrend = (Object.values(dailyData) as any[]).sort((a,b) => a.date.getTime() - b.date.getTime());

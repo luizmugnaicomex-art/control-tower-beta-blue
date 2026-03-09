@@ -1,5 +1,5 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
     BarChart,
     Bar,
@@ -24,6 +24,11 @@ interface ScenarioChartProps {
 const ScenarioChart: React.FC<ScenarioChartProps> = ({ shipments }) => {
     const [aiAudit, setAiAudit] = useState<string>('');
     const [isAuditing, setIsAuditing] = useState(false);
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
 
     const { 
         data, 
@@ -193,50 +198,52 @@ const ScenarioChart: React.FC<ScenarioChartProps> = ({ shipments }) => {
                 </div>
             )}
 
-            <div className="h-[350px] w-full mt-4">
-                <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                        data={data}
-                        layout="vertical"
-                        margin={{ top: 5, right: 60, left: 10, bottom: 5 }}
-                    >
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-                        <XAxis 
-                            type="number" 
-                            hide 
-                        />
-                        <YAxis
-                            dataKey="name"
-                            type="category"
-                            width={160}
-                            axisLine={false}
-                            tickLine={false}
-                            tick={{ fontSize: 10, fontWeight: 800, fill: '#64748b' }}
-                        />
-                        <Tooltip
-                            cursor={{ fill: '#f8fafc' }}
-                            contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                            formatter={(value: number) => [currencyFormatter.format(value), 'Cost']}
-                        />
-                        <Bar 
-                            dataKey="value" 
-                            radius={[0, 12, 12, 0]} 
-                            barSize={32}
-                            animationDuration={1500}
+            <div className="chart-wrapper h-[350px] w-full mt-4">
+                {mounted && (
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                            data={data}
+                            layout="vertical"
+                            margin={{ top: 5, right: 60, left: 10, bottom: 5 }}
                         >
-                            {data.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={entry.color} />
-                            ))}
-                            <LabelList 
-                                dataKey="value" 
-                                position="right" 
-                                offset={10} 
-                                formatter={(val: number) => currencyFormatter.format(val).replace('.00', '')}
-                                style={{ fontSize: '11px', fontWeight: 900, fill: '#1e293b' }}
+                            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
+                            <XAxis 
+                                type="number" 
+                                hide 
                             />
-                        </Bar>
-                    </BarChart>
-                </ResponsiveContainer>
+                            <YAxis
+                                dataKey="name"
+                                type="category"
+                                width={160}
+                                axisLine={false}
+                                tickLine={false}
+                                tick={{ fontSize: 10, fontWeight: 800, fill: '#64748b' }}
+                            />
+                            <Tooltip
+                                cursor={{ fill: '#f8fafc' }}
+                                contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                                formatter={(value: number) => [currencyFormatter.format(value), 'Cost']}
+                            />
+                            <Bar 
+                                dataKey="value" 
+                                radius={[0, 12, 12, 0]} 
+                                barSize={32}
+                                animationDuration={1500}
+                            >
+                                {data.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={entry.color} />
+                                ))}
+                                <LabelList 
+                                    dataKey="value" 
+                                    position="right" 
+                                    offset={10} 
+                                    formatter={(val: number) => currencyFormatter.format(val).replace('.00', '')}
+                                    style={{ fontSize: '11px', fontWeight: 900, fill: '#1e293b' }}
+                                />
+                            </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
+                )}
             </div>
 
             <div className="pt-6 border-t border-slate-50 flex items-center gap-2 text-[10px] text-slate-400 font-bold uppercase tracking-widest">

@@ -104,6 +104,7 @@ export interface Shipment {
   detentionRisk: number | null;
   portToCargoReady: number | null;
   madeRomaneio: string;
+  status: string;
 }
 
 export interface PipelineWeek {
@@ -114,7 +115,7 @@ export interface PipelineWeek {
     pendingCount: number;
     drainDaysGate: number;
     drainDaysFactory: number;
-    status: 'PRAZO VENCIDO' | 'SAFE' | 'TIME COLLISION';
+    status: 'PRAZO VENCIDO' | 'SAFE' | 'TIME COLLISION' | 'COMPLETED';
     weekNum: number;
     year: number;
 }
@@ -151,6 +152,18 @@ export interface KpiData {
   flaggedContainersCount: number;
   projectedBacklogCrossing10Days: number;
   financialExposure: number;
+  
+  // New metrics from vanilla JS
+  inTransit: number;
+  portFiscal: number;
+  bondedStock: number;
+  ftRisk7d: number;
+  ftRisk3d: number;
+  bondedDwellSum: number;
+  bondedDwellCount: number;
+  bondedDwellGt7: number;
+  bondedDwellGt10: number;
+  bondedDwellMax: number;
 }
 
 export interface ChartData {

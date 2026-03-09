@@ -28,6 +28,32 @@ body {
 .recharts-responsive-container {
     min-height: 250px;
 }
+
+.dashboard-container {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 20px;
+  width: 100%;
+}
+
+.chart-wrapper {
+  width: 100%;
+  min-height: 300px;
+}
+
+.main-content {
+  width: 100%;
+  max-width: 1400px;
+  margin: auto;
+}
+
 /* Class to hide elements during PPT/Print export */
 .is-exporting .no-export {
     display: none !important;

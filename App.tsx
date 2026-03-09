@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useFreightData } from "./hooks/useFreightData";
 import { RoutesTable } from "./components/RoutesTable";
 import { CarrierCards } from "./components/CarrierCards";
@@ -28,11 +28,19 @@ import { Shipment, SortConfig, PipelineWeek } from "./types";
 
 type MainView = "performance" | "benchmark" | "estimative" | "warehouse_sim";
 
+const isValidDate = (d: any): d is Date => d instanceof Date && !isNaN(d.getTime());
+
 export default function App() {
   const benchmark = useFreightData();
   const { activeTab, inct, justifications, containerQuantity, provision } = benchmark.state;
 
   const [mainView, setMainView] = useState<MainView>("performance");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [carriersList, setCarriersList] = useState<string[]>([]);
   const [analystsList, setAnalystsList] = useState<string[]>([]);
@@ -229,7 +237,7 @@ export default function App() {
 
   const handleLotClick = (model: string, dateLabel: string, batchNumber: string) => {
     const matchingShipments = filteredShipments.filter(s => {
-      if (!s.deliveryByd) return false;
+      if (!s || !s.deliveryByd) return false;
       const sDateStr = s.deliveryByd.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
       return sDateStr === dateLabel && s.batchNumber === batchNumber && s.cargoModel === model;
     });
@@ -243,19 +251,25 @@ export default function App() {
   const handlePipelineWeekClick = (week: PipelineWeek) => {
     // Filter shipments that arrive in this specific ISO week
     const matchingShipments = filteredShipments.filter(s => {
+        if (!s) return false;
         const date = s.ata || s.estimatedDelivery;
-        if (!date) return false;
+        if (!isValidDate(date)) return false;
+        
+        // Exact same logic as getISOWeek in dataProcessor.ts
         const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+        if (!isValidDate(d)) return false;
+        
         const dayNum = d.getUTCDay() || 7;
         d.setUTCDate(d.getUTCDate() + 4 - dayNum);
         const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
         const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+        
         return weekNo === week.weekNum && d.getUTCFullYear() === week.year;
     });
 
     setModalData({
         isOpen: true,
-        weekLabel: `Pipeline Analysis - ${week.period}`,
+        weekLabel: `WEEK DRILLDOWN: ${week.period}`,
         shipments: matchingShipments
     });
   };
@@ -406,10 +420,10 @@ export default function App() {
         </div>
       </div>
 
-      <main className="mx-auto max-w-[1400px] p-6 lg:p-8">
+      <main className="mx-auto max-w-[1400px] p-6 lg:p-8 main-content w-full">
         
         {mainView === "performance" ? (
-          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 dashboard-container">
              <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 no-export">
                 <div className="flex items-center gap-6">
                   <div>
@@ -489,19 +503,64 @@ export default function App() {
                     </div>
                  </section>
 
-                  <section id="kpi-grid" className="export-section grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                    <KpiCard icon="task_alt" title="Goal Met" value={kpis.daysGoalAchieved.toString()} unit="Days" color="text-emerald-600" calculationLogic={`Weekdays where clearance reached ≥ ${kpis.dailyGoalValue} containers.`} highlight={goalPct >= 100} />
-                    <KpiCard icon="running_with_errors" title="Goal Missed" value={kpis.daysGoalNotAchieved.toString()} unit="Days" color="text-red-500" calculationLogic={`Weekdays below the daily target of ${kpis.dailyGoalValue} containers.`} highlight={goalPct < 85} />
-                    <KpiCard icon="event_available" title="On-Time" value={kpis.onTimePercentage} unit="%" color="text-emerald-600" calculationLogic="Percentage of shipments where Actual Delivery was <= Estimated Delivery." onClick={handleOnTimeClick} />
-                    <KpiCard icon="payments" title="Demurrage" value={currencyFormatter.format(kpis.totalDemurrage).replace('.00', '')} color="text-red-600" calculationLogic="Total costs from late empty container returns (PCM data)." highlight={kpis.totalDemurrage > 0} onClick={handleDemurrageClick} />
-                    <KpiCard icon="speed" title="Port -> BYD" value={kpis.avgPortToDelivery} unit="Days" color="text-blue-600" calculationLogic="Avg days elapsed between ATA (Port) and Actual Delivery at BYD warehouse." />
-                    <KpiCard icon="fact_check" title="Clearance" value={kpis.avgAtaToChannel} unit="Days" color="text-amber-600" calculationLogic="Avg days for Customs submission (ATA to CHANNEL DATE - Col R x V)." onClick={handleClearanceClick} />
-                    <KpiCard icon="description" title="NF Processing" value={kpis.avgChannelToNf} unit="Days" color="text-indigo-600" calculationLogic="Avg days to issue documentation after clearance (CHANNEL DATE to DATE NF - Col V x Y)." />
-                    <KpiCard icon="warning" title="At Risk" value={kpis.detentionRiskShipments.toString()} unit="CNTR" color="text-red-500" calculationLogic="Count of containers currently past their return deadline." highlight={kpis.detentionRiskShipments > 0} onClick={handleAtRiskClick} />
-                    <KpiCard icon="hourglass_empty" title="Projected > 10d" value={kpis.projectedBacklogCrossing10Days.toString()} unit="CNTR" color="text-orange-600" calculationLogic="Projected containers that will exceed 10 days in backlog based on current drain rate." highlight={kpis.projectedBacklogCrossing10Days > 0} onClick={handleProjectedClick} />
-                    <KpiCard icon="account_balance_wallet" title="Financial Exp." value={currencyFormatter.format(kpis.financialExposure).replace('.00', '')} color="text-red-600" calculationLogic="Estimated storage costs for projected backlog based on bonded warehouse contracts." highlight={kpis.financialExposure > 0} onClick={handleProjectedClick} />
-                    <KpiCard icon="flag" title="Flagged Containers" value={kpis.flaggedContainersCount.toString()} unit="CNTR" color="text-amber-500" calculationLogic="Containers within 15 days of free time deadline and not yet returned." highlight={kpis.flaggedContainersCount > 0} onClick={handleFlaggedClick} />
-                    <KpiCard icon="pending_actions" title="Pending Rom." value={kpis.pendingRomaneioCount.toString()} unit="CNTR" color="text-orange-500" calculationLogic="Count of shipments with pending or missing Romaneio status." highlight={kpis.pendingRomaneioCount > 0} onClick={() => setFilters(f => ({...f, romaneioStatuses: ['NO', '0', 'PENDING']}))} />
+                  <section id="kpi-grid" className="export-section space-y-4 mb-8">
+                    <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+                      <div className="bg-white rounded-2xl p-6 border-t-4 border-blue-500 shadow-sm">
+                        <div className="text-[10px] font-black text-slate-400 uppercase">EM MAR (IN-TRANSIT)</div>
+                        <div className="text-4xl font-black text-blue-600 mt-2">{kpis.inTransit} <span className="text-xs text-slate-400">FCL</span></div>
+                      </div>
+
+                      <div className="bg-white rounded-2xl p-6 border-t-4 border-orange-500 shadow-sm">
+                        <div className="text-[10px] font-black text-slate-400 uppercase">PORTO / FISCAL</div>
+                        <div className="text-4xl font-black text-orange-500 mt-2">{kpis.portFiscal} <span className="text-xs text-slate-400">FCL</span></div>
+                      </div>
+
+                      <div className="bg-white rounded-2xl p-6 border-t-4 border-green-500 shadow-sm">
+                        <div className="text-[10px] font-black text-slate-400 uppercase">BONDED STOCK</div>
+                        <div className="text-4xl font-black text-green-600 mt-2">{kpis.bondedStock} <span className="text-xs text-slate-400">FCL</span></div>
+                      </div>
+
+                      <div className="bg-white rounded-2xl p-6 border-t-4 border-indigo-500 shadow-sm">
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TOTAL COVERAGE</div>
+                        <div className="text-4xl font-black text-indigo-600 mt-2">{Math.floor((kpis.bondedStock + 300) / 160)} <span className="text-xs text-slate-400 font-bold uppercase">dias</span></div>
+                      </div>
+
+                      <div className="bg-white rounded-2xl p-6 border-t-4 border-amber-500 shadow-sm">
+                        <div className="text-[10px] font-black text-slate-400 uppercase">FREE TIME ≤ 7d</div>
+                        <div className="text-4xl font-black text-amber-600 mt-2">{kpis.ftRisk7d}</div>
+                      </div>
+
+                      <div className="bg-white rounded-2xl p-6 border-t-4 border-red-500 shadow-sm">
+                        <div className="text-[10px] font-black text-slate-400 uppercase">FREE TIME ≤ 3d</div>
+                        <div className="text-4xl font-black text-red-600 mt-2">{kpis.ftRisk3d}</div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div className="bg-white rounded-2xl p-6 border-l-4 border-slate-900 shadow-sm">
+                        <div className="text-[10px] font-black text-slate-400 uppercase">BUFFER COVERAGE</div>
+                        <div className="text-3xl font-black text-slate-900 mt-2">{Math.round((300 / 160) * 10) / 10}<span className="text-xs text-slate-400 ml-1">days</span></div>
+                        <div className="text-[10px] text-slate-400 font-black uppercase mt-1">buffer 300 / demand 160</div>
+                      </div>
+
+                      <div className="bg-white rounded-2xl p-6 border-l-4 border-indigo-600 shadow-sm">
+                        <div className="text-[10px] font-black text-slate-400 uppercase">DAYS TO EMPTY BONDED (GATE)</div>
+                        <div className="text-3xl font-black text-indigo-700 mt-2">{Math.round((kpis.bondedStock / 170) * 10) / 10}<span className="text-xs text-slate-400 ml-1">days</span></div>
+                        <div className="text-[10px] text-slate-400 font-black uppercase mt-1">bonded {kpis.bondedStock} / gate 170</div>
+                      </div>
+
+                      <div className="bg-white rounded-2xl p-6 border-l-4 border-red-600 shadow-sm">
+                        <div className="text-[10px] font-black text-slate-400 uppercase">DAYS TO EMPTY BONDED (FACTORY)</div>
+                        <div className="text-3xl font-black text-red-700 mt-2">{Math.round((kpis.bondedStock / 150) * 10) / 10}<span className="text-xs text-slate-400 ml-1">days</span></div>
+                        <div className="text-[10px] text-slate-400 font-black uppercase mt-1">bonded {kpis.bondedStock} / factory 150</div>
+                      </div>
+
+                      <div className="bg-white rounded-2xl p-6 border-l-4 border-amber-500 shadow-sm">
+                        <div className="text-[10px] font-black text-slate-400 uppercase">AVG BONDED DWELL</div>
+                        <div className="text-3xl font-black text-amber-700 mt-2">{kpis.bondedDwellCount ? Math.round((kpis.bondedDwellSum / kpis.bondedDwellCount) * 10) / 10 : 0}<span className="text-xs text-slate-400 ml-1">days</span></div>
+                        <div className="text-[10px] text-slate-400 font-black uppercase mt-1">oldest: {kpis.bondedDwellMax}d | {'>'}7d: {kpis.bondedDwellGt7} | {'>'}10d: {kpis.bondedDwellGt10}</div>
+                      </div>
+                    </div>
                   </section>
 
                  <div className="no-export">
@@ -529,23 +588,35 @@ export default function App() {
 
                  <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
                     <div className="xl:col-span-2 space-y-8">
-                        <div>
-                           <ChartsGrid 
-                             data={charts} 
-                             onLeadTimeClick={(d) => setModalData({ isOpen: true, weekLabel: d.label, shipments: filteredShipments.filter(s => s.deliveryByd && s.deliveryByd.toLocaleDateString() === d.label) })} 
-                             onCargoReadyClick={(d) => {
-                               const matchingShipments = filteredShipments.filter(s => {
-                                 if (!s.cargoReadyDate) return false;
-                                 return s.cargoReadyDate.toLocaleDateString() === d.label;
-                               });
-                               setModalData({
-                                 isOpen: true,
-                                 weekLabel: `Cargo Ready - ${d.label}`,
-                                 shipments: matchingShipments
-                               });
-                             }}
-                           />
-                        </div>
+                        <div className="chart-wrapper">
+                            {mounted && (
+                               <ChartsGrid 
+                                 data={charts} 
+                                 onLeadTimeClick={(d) => {
+                                   const targetDate = d.date ? new Date(d.date).toISOString().split('T')[0] : null;
+                                   if (!targetDate) return;
+                                   const matching = filteredShipments.filter(s => {
+                                     if (!s.deliveryByd) return false;
+                                     return s.deliveryByd.toISOString().split('T')[0] === targetDate;
+                                   });
+                                   setModalData({ isOpen: true, weekLabel: d.label, shipments: matching });
+                                 }} 
+                                 onCargoReadyClick={(d) => {
+                                   const targetDate = d.date ? new Date(d.date).toISOString().split('T')[0] : null;
+                                   if (!targetDate) return;
+                                   const matching = filteredShipments.filter(s => {
+                                     if (!s.cargoReadyDate) return false;
+                                     return s.cargoReadyDate.toISOString().split('T')[0] === targetDate;
+                                   });
+                                   setModalData({
+                                     isOpen: true,
+                                     weekLabel: `Cargo Ready - ${d.label}`,
+                                     shipments: matching
+                                   });
+                                 }}
+                               />
+                            )}
+                         </div>
                         <section id="lot-grid" className="export-section">
                            <OperationalLotGrid shipments={filteredShipments} onLotClick={handleLotClick} />
                         </section>

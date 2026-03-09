@@ -15,12 +15,13 @@ const PipelineAnalysis: React.FC<PipelineAnalysisProps> = ({ data, onWeekClick }
             case 'PRAZO VENCIDO': return 'bg-red-50 text-red-600 border-red-100';
             case 'TIME COLLISION': return 'bg-orange-50 text-orange-600 border-orange-100';
             case 'SAFE': return 'bg-emerald-50 text-emerald-600 border-emerald-100';
+            case 'COMPLETED': return 'bg-emerald-50 text-emerald-600 border-emerald-100';
             default: return 'bg-gray-50 text-gray-600 border-gray-100';
         }
     };
 
     return (
-        <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden mb-8 animate-in fade-in slide-in-from-top-4 duration-700">
+        <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden mb-8">
             <div className="p-8 border-b border-slate-50 flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h3 className="text-sm font-black text-slate-800 uppercase tracking-[0.15em] flex items-center gap-2">
@@ -61,7 +62,10 @@ const PipelineAnalysis: React.FC<PipelineAnalysisProps> = ({ data, onWeekClick }
                             return (
                                 <tr 
                                     key={idx} 
-                                    onClick={() => onWeekClick(week)}
+                                    onClick={() => {
+                                        console.log("Week clicked:", week);
+                                        onWeekClick(week);
+                                    }}
                                     className="hover:bg-slate-50 cursor-pointer transition-colors group"
                                 >
                                     <td className="px-8 py-5 font-black text-slate-800 text-sm">{week.period}</td>

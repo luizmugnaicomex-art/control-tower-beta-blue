@@ -24,6 +24,7 @@ interface ChartsGridProps {
     onLeadTimeClick?: (data: any) => void;
     onCargoReadyClick?: (data: any) => void;
     onAtaClick?: (data: any) => void;
+    onRampUpClick?: (data: any) => void;
 }
 
 const chartColors = [
@@ -158,8 +159,75 @@ const ChartContainer: React.FC<{
     );
 };
 
-const ChartsGrid: React.FC<ChartsGridProps> = ({ data, onLeadTimeClick, onCargoReadyClick, onAtaClick }) => {
+const ChartsGrid: React.FC<ChartsGridProps> = ({ data, onLeadTimeClick, onCargoReadyClick, onAtaClick, onRampUpClick }) => {
     const [maximizedChart, setMaximizedChart] = useState<string | null>(null);
+    const [scenario, setScenario] = useState<number | ''>(150);
+
+    const rampUpDataWithScenarios = useMemo(() => {
+        const INITIAL_BACKLOG = 2400; // <-- adjust to real yard inventory
+
+        let backlog = INITIAL_BACKLOG;
+        let cumulativeDelivered = 0;
+
+        const s = Number(scenario) || 0;
+
+        const result = data.rampUpPlan.map((period) => {
+            const arrivals = period.actualArrivals + period.projectedArrivals;
+
+            const capacity = s * 5; // Using working days only
+
+            const delivered = Math.min(capacity, backlog + arrivals);
+
+            backlog = backlog + arrivals - delivered;
+            cumulativeDelivered += delivered;
+
+            return {
+                ...period,
+                weeklyDelivered: delivered,
+                cumulativeDelivered,
+                backlog
+            };
+        });
+
+        // Extend periods if there is still a backlog
+        if (backlog > 0) {
+            let lastPeriod = result[result.length - 1].period;
+            let [weekStr, yearStr] = lastPeriod.split(' - ');
+            let week = parseInt(weekStr.replace('W', ''));
+            let year = parseInt(yearStr);
+            let cumulativeArrivals = result[result.length - 1].cumulativeArrivals;
+
+            let safetyCounter = 0;
+            while (backlog > 0 && safetyCounter < 52) {
+                week++;
+                if (week > 52) {
+                    week = 1;
+                    year++;
+                }
+                
+                const arrivals = 0;
+                const capacity = s * 5;
+                
+                const delivered = Math.min(capacity, backlog + arrivals);
+                
+                cumulativeDelivered += delivered;
+                backlog = backlog + arrivals - delivered;
+                
+                result.push({
+                    period: `W${week} - ${year}`,
+                    actualArrivals: 0,
+                    projectedArrivals: 0,
+                    cumulativeArrivals,
+                    weeklyDelivered: delivered,
+                    cumulativeDelivered,
+                    backlog
+                });
+                safetyCounter++;
+            }
+        }
+
+        return result;
+    }, [data.rampUpPlan, scenario]);
 
     const getSum = (dataset: { value: number }[]) => dataset.reduce((acc, curr) => acc + curr.value, 0);
 
@@ -513,11 +581,6 @@ const ChartsGrid: React.FC<ChartsGridProps> = ({ data, onLeadTimeClick, onCargoR
                         >
                             <LabelList dataKey="readyCount" position="top" fontSize={labelSize} fill="#1e293b" fontWeight={900} />
                         </Bar>
-                        
-                        {/* Consumption Outflow */}
-                        <Bar dataKey="deliveredCount" name="Delivered (Outflow)" fill="#2563EB" radius={[6, 6, 0, 0]} opacity={0.3}>
-                            <LabelList dataKey="deliveredCount" position="bottom" fontSize={labelSize} fill="#1e293b" fontWeight={900} />
-                        </Bar>
 
                         {/* Remaining Balance Area */}
                         <Line
@@ -542,6 +605,70 @@ const ChartsGrid: React.FC<ChartsGridProps> = ({ data, onLeadTimeClick, onCargoR
                         />
                     </ComposedChart>
                 );
+            case 'ramp_up_plan':
+                return (
+                    <ComposedChart data={rampUpDataWithScenarios} margin={{ top: 20, right: 20, left: 10, bottom: 30 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                        <XAxis 
+                            dataKey="period" 
+                            tick={{ fontSize: labelSize, fontWeight: 700, fill: '#64748b' }} 
+                            axisLine={false} 
+                            tickLine={false} 
+                            interval={0}
+                            angle={-45}
+                            textAnchor="end"
+                            height={60}
+                        />
+                        <YAxis tick={{ fontSize: labelSize, fontWeight: 700, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Legend 
+                            wrapperStyle={{ fontSize: labelSize, fontWeight: 800, textTransform: 'uppercase', paddingTop: '30px' }} 
+                            payload={[
+                                { value: 'Arrivals', type: 'rect', color: '#1E293B' },
+                                { value: 'Delivered', type: 'line', color: '#10B981', strokeDasharray: '5 5' },
+                                { value: 'Backlog', type: 'line', color: '#EF4444' },
+                                { value: 'Terminal Capacity', type: 'line', color: '#DC2626', strokeDasharray: '5 5' }
+                            ]}
+                        />
+                        
+                        <ReferenceLine 
+                            y={15000} 
+                            stroke="#DC2626" 
+                            strokeDasharray="5 5" 
+                            label={{ position: 'insideTopLeft', value: 'Terminal Capacity', fill: '#DC2626', fontSize: 12, fontWeight: 'bold' }} 
+                        />
+
+                        <Bar dataKey="actualArrivals" name="Actual Arrivals (ATA)" stackId="a" fill="#1E293B" radius={[0, 0, 0, 0]} onClick={(data) => onRampUpClick?.(data)} style={{ cursor: onRampUpClick ? 'pointer' : 'default' }} />
+                        
+                        <Bar dataKey="projectedArrivals" name="Projected Arrivals (ETA)" stackId="a" fill="#94A3B8" radius={[6, 6, 0, 0]} onClick={(data) => onRampUpClick?.(data)} style={{ cursor: onRampUpClick ? 'pointer' : 'default' }} />
+
+                        {scenario !== '' && (
+                            <>
+                                <Line 
+                                    type="monotone" 
+                                    dataKey="weeklyDelivered" 
+                                    name={`Delivered Capacity (${scenario}/day)`} 
+                                    stroke="#10B981" 
+                                    strokeWidth={3} 
+                                    strokeDasharray="5 5"
+                                    dot={false} 
+                                    activeDot={{ r: 6 }}
+                                />
+                                <Line 
+                                    type="monotone" 
+                                    dataKey="backlog" 
+                                    name={`Projected Backlog`} 
+                                    stroke="#EF4444" 
+                                    strokeWidth={3} 
+                                    dot={false} 
+                                    activeDot={{ r: 6 }}
+                                >
+                                    <LabelList dataKey="backlog" position="top" fontSize={labelSize} fill="#EF4444" fontWeight={900} />
+                                </Line>
+                            </>
+                        )}
+                    </ComposedChart>
+                );
             default:
                 return null;
         }
@@ -562,6 +689,7 @@ const ChartsGrid: React.FC<ChartsGridProps> = ({ data, onLeadTimeClick, onCargoR
             case 'carrier_leadtime': return { title: "Carrier Performance (Lead Time)", subtitle: "Average transit days from port departure to final warehouse delivery." };
             case 'romaneio_distribution': return { title: "Romaneio Status Distribution", subtitle: "Tracking of shipments with completed vs pending romaneios (Column BD)." };
             case 'cargo_ready_comparison': return { title: "Cargo Ready vs Delivered Comparison", subtitle: "Comparison between vessel arrivals (ATA), containers ready (Column Z), and units actually delivered per day." };
+            case 'ramp_up_plan': return { title: "Inbound Capacity Ramp-Up Plan", subtitle: "Projection of arrivals showing actual vs estimated container volume per week." };
             default: return { title: "Chart", subtitle: "" };
         }
     };
@@ -725,6 +853,31 @@ const ChartsGrid: React.FC<ChartsGridProps> = ({ data, onLeadTimeClick, onCargoR
                 </ChartContainer>
             </div>
 
+            <div className="export-section lg:col-span-2">
+                <ChartContainer 
+                    title={getChartMeta('ramp_up_plan').title} 
+                    subtitle={getChartMeta('ramp_up_plan').subtitle}
+                    headerRight={
+                        <div className="flex gap-4 items-center">
+                            <div className="flex items-center gap-2">
+                                <label className="text-[10px] font-black uppercase text-slate-500">Scenario (/day):</label>
+                                <input 
+                                    type="number" 
+                                    className="w-16 px-2 py-1 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    value={scenario}
+                                    onChange={(e) => setScenario(e.target.value === '' ? '' : Number(e.target.value))}
+                                    placeholder="Qty"
+                                />
+                            </div>
+                        </div>
+                    }
+                    height={400}
+                    onMaximize={() => setMaximizedChart('ramp_up_plan')}
+                >
+                    {renderChartContent('ramp_up_plan')}
+                </ChartContainer>
+            </div>
+
             {maximizedChart && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4 sm:p-10 animate-in fade-in duration-300">
                     <div className="bg-white w-full max-w-[1400px] h-full max-h-[850px] rounded-[3rem] shadow-2xl flex flex-col overflow-hidden relative border border-slate-200">
@@ -738,12 +891,28 @@ const ChartsGrid: React.FC<ChartsGridProps> = ({ data, onLeadTimeClick, onCargoR
                                     {getChartMeta(maximizedChart).subtitle}
                                 </p>
                             </div>
-                            <button 
-                                onClick={() => setMaximizedChart(null)}
-                                className="bg-slate-50 hover:bg-slate-100 text-slate-400 hover:text-slate-600 p-3 rounded-2xl transition-all shadow-sm"
-                            >
-                                <span className="material-icons text-2xl">close</span>
-                            </button>
+                            <div className="flex items-center gap-6">
+                                {maximizedChart === 'ramp_up_plan' && (
+                                    <div className="flex gap-4 items-center bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                                        <div className="flex items-center gap-2">
+                                            <label className="text-[10px] font-black uppercase text-slate-500">Scenario (/day):</label>
+                                            <input 
+                                                type="number" 
+                                                className="w-20 px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                                value={scenario}
+                                                onChange={(e) => setScenario(e.target.value === '' ? '' : Number(e.target.value))}
+                                                placeholder="Qty"
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+                                <button 
+                                    onClick={() => setMaximizedChart(null)}
+                                    className="bg-slate-50 hover:bg-slate-100 text-slate-400 hover:text-slate-600 p-3 rounded-2xl transition-all shadow-sm"
+                                >
+                                    <span className="material-icons text-2xl">close</span>
+                                </button>
+                            </div>
                         </div>
                         
                         <div className="flex-1 p-10 bg-slate-50/30">

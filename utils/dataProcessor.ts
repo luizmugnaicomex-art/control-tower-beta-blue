@@ -75,7 +75,7 @@ export const dateDiffInDays = (date1: Date | null, date2: Date | null): number |
     return Math.floor((utc2.getTime() - utc1.getTime()) / _MS_PER_DAY);
 };
 
-const getISOWeek = (date: Date) => {
+export const getISOWeek = (date: Date) => {
     const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
     const dayNum = d.getUTCDay() || 7;
     d.setUTCDate(d.getUTCDate() + 4 - dayNum);
@@ -699,7 +699,8 @@ export const calculateDashboardData = (shipments: Shipment[]): { kpis: KpiData, 
             acc[status] = (acc[status] || 0) + 1;
             return acc;
         }, {} as Record<string, number>)).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value),
-        cargoReadyComparison: []
+        cargoReadyComparison: [],
+        rampUpPlan: []
     };
 
     // Calculate Cargo Ready Comparison
@@ -772,6 +773,42 @@ export const calculateDashboardData = (shipments: Shipment[]): { kpis: KpiData, 
         return {
             ...day,
             runningBalance: Math.max(0, currentBalance) // Balance shouldn't be negative in theory, but let's be safe
+        };
+    });
+
+    // Calculate Inbound Capacity Ramp-Up Plan
+    const rampUpMap: Record<string, { period: string; actualArrivals: number; projectedArrivals: number; sortKey: number }> = {};
+
+    shipments.forEach(s => {
+        const date = s.ata || s.estimatedDelivery;
+        if (date) {
+            const { week, year } = getISOWeek(date);
+            const key = `W${week} - ${year}`;
+            
+            if (!rampUpMap[key]) {
+                rampUpMap[key] = {
+                    period: key,
+                    actualArrivals: 0,
+                    projectedArrivals: 0,
+                    sortKey: year * 100 + week
+                };
+            }
+            
+            if (s.ata) {
+                rampUpMap[key].actualArrivals++;
+            } else {
+                rampUpMap[key].projectedArrivals++;
+            }
+        }
+    });
+
+    const sortedRampUp = Object.values(rampUpMap).sort((a, b) => a.sortKey - b.sortKey);
+    let cumulativeArrivals = 0;
+    charts.rampUpPlan = sortedRampUp.map(period => {
+        cumulativeArrivals += period.actualArrivals + period.projectedArrivals;
+        return {
+            ...period,
+            cumulativeArrivals
         };
     });
 

@@ -230,6 +230,13 @@ export interface ChartData {
     runningBalance: number;
     isWeekend: boolean;
   }>;
+  rampUpPlan: Array<{
+    period: string;
+    actualArrivals: number;
+    projectedArrivals: number;
+    cumulativeArrivals: number;
+    sortKey: number;
+  }>;
 }
 
 export interface SortConfig {

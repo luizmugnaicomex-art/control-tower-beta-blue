@@ -22,7 +22,7 @@ import OperationalLotGrid from "./components/OperationalLotGrid";
 import PipelineAnalysis from "./components/PipelineAnalysis";
 
 // Utils
-import { processRawData, calculateDashboardData, toUTC } from "./utils/dataProcessor";
+import { processRawData, calculateDashboardData, toUTC, getISOWeek } from "./utils/dataProcessor";
 import { currencyFormatter } from "./utils/formatters";
 import { Shipment, SortConfig, PipelineWeek } from "./types";
 
@@ -624,6 +624,20 @@ export default function App() {
                                    setModalData({
                                      isOpen: true,
                                      weekLabel: `Vessel Arrivals (ATA) - ${d.label}`,
+                                     shipments: matching
+                                   });
+                                 }}
+                                 onRampUpClick={(d) => {
+                                   if (!d.period) return;
+                                   const matching = filteredShipments.filter(s => {
+                                     const date = s.ata || s.estimatedDelivery;
+                                     if (!date) return false;
+                                     const { week, year } = getISOWeek(date);
+                                     return `W${week} - ${year}` === d.period;
+                                   });
+                                   setModalData({
+                                     isOpen: true,
+                                     weekLabel: `Ramp-Up Plan - ${d.period}`,
                                      shipments: matching
                                    });
                                  }}

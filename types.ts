@@ -217,9 +217,10 @@ export interface ChartData {
   portToCargoReadyByCarrier: Array<{ name: string; avgTime: number }>;
   deliveryVarianceByCarrier: Array<{ name: string; avgVariance: number }>;
   carrierVolume: Array<{ name: string; value: number }>;
-  warehouseVolume: Array<{ name: string; value: number; capacity: number }>;
+  warehouseVolume: Array<{ name: string; value: number; capacity: number; arrived: number }>;
   unloadedByWarehouse: Array<{ name: string; value: number; capacity: number }>;
-  bondedFlow: Array<{ name: string; placed: number; picked: number }>; // New Chart
+  bondedFlow: Array<{ name: string; placed: number; picked: number; arrived: number }>; // New Chart
+  bondedInventory: Array<{ name: string; arrivedNotPicked: number; futureArrivals: number; total: number }>;
   romaneioDistribution: Array<{ name: string; value: number }>;
   cargoReadyComparison: Array<{
     date: Date;

@@ -11,12 +11,23 @@ interface ChartDetailsModalProps {
     weekLabel: string;
     shipments: Shipment[];
     avgDrainRate?: number;
+    groupedData?: Record<string, Record<string, string[]>>;
 }
 
 const isValidDate = (d: any): d is Date => d instanceof Date && !isNaN(d.getTime());
 
-const ChartDetailsModal: React.FC<ChartDetailsModalProps> = ({ isOpen, onClose, weekLabel, shipments, avgDrainRate = 1 }) => {
+const ChartDetailsModal: React.FC<ChartDetailsModalProps> = ({ isOpen, onClose, weekLabel, shipments, avgDrainRate = 1, groupedData }) => {
     const [showOnlyPending, setShowOnlyPending] = useState(false);
+    const [expandedVessels, setExpandedVessels] = useState<Record<string, boolean>>({});
+    const [expandedBLs, setExpandedBLs] = useState<Record<string, boolean>>({});
+
+    const toggleVessel = (vessel: string) => {
+        setExpandedVessels(prev => ({ ...prev, [vessel]: !prev[vessel] }));
+    };
+
+    const toggleBL = (bl: string) => {
+        setExpandedBLs(prev => ({ ...prev, [bl]: !prev[bl] }));
+    };
 
     const displayedShipments = useMemo(() => {
         if (!shipments) return [];
@@ -408,6 +419,64 @@ const ChartDetailsModal: React.FC<ChartDetailsModalProps> = ({ isOpen, onClose, 
                                     </div>
 
                                     <div className="overflow-x-auto max-h-[500px] border border-slate-50 rounded-2xl shadow-inner bg-slate-50/20">
+                                        {groupedData ? (
+                                            <div className="p-4 space-y-4">
+                                                {Object.entries(groupedData).map(([vessel, bls]) => (
+                                                    <div key={vessel} className="border border-slate-200 rounded-xl overflow-hidden bg-white">
+                                                        <button 
+                                                            onClick={() => toggleVessel(vessel)}
+                                                            className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
+                                                        >
+                                                            <div className="flex items-center gap-3">
+                                                                <span className="material-icons text-slate-400">
+                                                                    {expandedVessels[vessel] ? 'expand_more' : 'chevron_right'}
+                                                                </span>
+                                                                <span className="font-black text-slate-800 uppercase tracking-wide">{vessel}</span>
+                                                            </div>
+                                                            <span className="text-xs font-bold text-slate-500 bg-white px-3 py-1 rounded-full border border-slate-200">
+                                                                {Object.keys(bls).length} BLs
+                                                            </span>
+                                                        </button>
+                                                        
+                                                        {expandedVessels[vessel] && (
+                                                            <div className="p-4 space-y-3 bg-white border-t border-slate-100">
+                                                                {Object.entries(bls).map(([bl, containers]) => (
+                                                                    <div key={bl} className="border border-slate-100 rounded-lg overflow-hidden">
+                                                                        <button 
+                                                                            onClick={() => toggleBL(bl)}
+                                                                            className="w-full flex items-center justify-between p-3 bg-indigo-50/50 hover:bg-indigo-50 transition-colors text-left"
+                                                                        >
+                                                                            <div className="flex items-center gap-2">
+                                                                                <span className="material-icons text-indigo-400 text-sm">
+                                                                                    {expandedBLs[bl] ? 'expand_more' : 'chevron_right'}
+                                                                                </span>
+                                                                                <span className="font-bold text-indigo-700 text-sm">{bl}</span>
+                                                                            </div>
+                                                                            <span className="text-[10px] font-black text-indigo-500 bg-white px-2 py-0.5 rounded-full border border-indigo-100">
+                                                                                {containers.length} Containers
+                                                                            </span>
+                                                                        </button>
+                                                                        
+                                                                        {expandedBLs[bl] && (
+                                                                            <div className="p-3 bg-white border-t border-indigo-50">
+                                                                                <div className="flex flex-wrap gap-2">
+                                                                                    {containers.map((container, i) => (
+                                                                                        <span key={i} className="px-2.5 py-1 bg-slate-100 text-slate-700 text-xs font-mono rounded-md border border-slate-200">
+                                                                                            {container}
+                                                                                        </span>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                        <>
                                         <table className="min-w-full divide-y divide-slate-100">
                                             <thead className="bg-white sticky top-0 z-10 border-b border-slate-100">
                                                 <tr>
@@ -564,6 +633,8 @@ const ChartDetailsModal: React.FC<ChartDetailsModalProps> = ({ isOpen, onClose, 
                                                     Showing first 100 of {displayedShipments.length} records. Export to Excel to see all.
                                                 </p>
                                             </div>
+                                        )}
+                                        </>
                                         )}
                                     </div>
                                 </div>

@@ -66,7 +66,7 @@ export default function App() {
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
-  const [modalData, setModalData] = useState<{ isOpen: boolean; weekLabel: string; shipments: Shipment[] }>({
+  const [modalData, setModalData] = useState<{ isOpen: boolean; weekLabel: string; shipments: Shipment[]; groupedData?: Record<string, Record<string, string[]>> }>({
     isOpen: false,
     weekLabel: "",
     shipments: [],
@@ -592,6 +592,7 @@ export default function App() {
                             {mounted && (
                                <ChartsGrid 
                                  data={charts} 
+                                 shipments={filteredShipments}
                                  onLeadTimeClick={(d) => {
                                    const targetDate = d.date ? new Date(d.date).toISOString().split('T')[0] : null;
                                    if (!targetDate) return;
@@ -639,6 +640,34 @@ export default function App() {
                                      isOpen: true,
                                      weekLabel: `Ramp-Up Plan - ${d.period}`,
                                      shipments: matching
+                                   });
+                                 }}
+                                 onBondedInventoryClick={(d, type) => {
+                                   const todayUTC = toUTC(new Date());
+
+                                   const matching = filteredShipments.filter(s => {
+                                     if (s.bondedWarehouse !== d.name || !s.ata || s.deliveryByd) return false;
+                                     const isFuture = toUTC(s.ata).getTime() > todayUTC.getTime();
+                                     if (type === 'futureArrivals') return isFuture;
+                                     if (type === 'arrivedNotPicked') return !isFuture;
+                                     return true; // Fallback if no type is provided
+                                   });
+                                   const groupedData = matching.reduce((acc, s) => {
+                                     const vessel = s.vesselName || 'Unknown Vessel';
+                                     const bl = s.billOfLading || 'Unknown BL';
+                                     if (!acc[vessel]) acc[vessel] = {};
+                                     if (!acc[vessel][bl]) acc[vessel][bl] = [];
+                                     if (s.containerNumber) acc[vessel][bl].push(s.containerNumber);
+                                     return acc;
+                                   }, {} as Record<string, Record<string, string[]>>);
+                                   
+                                   const labelSuffix = type === 'futureArrivals' ? 'Future Arrivals' : type === 'arrivedNotPicked' ? 'Arrived Already' : 'Arrived & Not Picked';
+                                   
+                                   setModalData({
+                                     isOpen: true,
+                                     weekLabel: `${labelSuffix} - ${d.name}`,
+                                     shipments: matching,
+                                     groupedData
                                    });
                                  }}
                                />
@@ -759,6 +788,7 @@ export default function App() {
         isOpen={modalData.isOpen} 
         weekLabel={modalData.weekLabel} 
         shipments={modalData.shipments} 
+        groupedData={modalData.groupedData}
         avgDrainRate={parseFloat(kpis.avgWeekdayVolume) || 1}
         onClose={() => setModalData(d => ({...d, isOpen: false}))} 
       />

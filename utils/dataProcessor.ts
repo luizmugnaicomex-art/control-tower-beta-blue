@@ -687,13 +687,38 @@ export const calculateDashboardData = (shipments: Shipment[]): { kpis: KpiData, 
         portToCargoReadyByCarrier: aggregateBy('carrier', s => s.portToCargoReady, vals => avg(vals as number[])).map(d => ({name: d.name, avgTime: d.value})).sort((a, b) => a.avgTime - b.avgTime),
         deliveryVarianceByCarrier: aggregateBy('carrier', s => s.clientDeliveryVariance, vals => avg(vals as number[])).map(d => ({ name: d.name, avgVariance: d.value })).sort((a, b) => b.avgVariance - a.avgVariance),
         carrierVolume: aggregateBy('carrier', s => s.deliveryByd ? 1 : null, vals => vals.length).sort((a, b) => b.value - a.value),
-        warehouseVolume: aggregateBy('bondedWarehouse', s => 1, vals => vals.length).map(d => ({ name: d.name, value: d.value, capacity: WAREHOUSE_CAPACITIES[d.name] || 0 })).sort((a, b) => b.value - a.value),
+        warehouseVolume: aggregateBy('bondedWarehouse', s => 1, vals => vals.length).map(d => ({ 
+            name: d.name, 
+            value: d.value, 
+            capacity: WAREHOUSE_CAPACITIES[d.name] || 0,
+            arrived: shipments.filter(s => s.bondedWarehouse === d.name && s.estimatedDelivery).length
+        })).sort((a, b) => b.value - a.value),
         unloadedByWarehouse: aggregateBy('bondedWarehouse', s => s.unloadDate ? 1 : null, vals => vals.length).map(d => ({ name: d.name, value: d.value, capacity: WAREHOUSE_CAPACITIES[d.name] || 0 })).sort((a, b) => b.value - a.value),
         bondedFlow: aggregateBy('bondedWarehouse', s => (s.ata ? 1 : null), vals => vals.length).map(d => ({
             name: d.name,
             placed: d.value,
-            picked: shipments.filter(s => s.bondedWarehouse === d.name && s.deliveryByd).length
+            picked: shipments.filter(s => s.bondedWarehouse === d.name && s.deliveryByd).length,
+            arrived: shipments.filter(s => s.bondedWarehouse === d.name && s.estimatedDelivery).length
         })).sort((a, b) => b.placed - a.placed),
+        bondedInventory: Object.entries(shipments.reduce((acc, s) => {
+            if (s.ata && !s.deliveryByd) {
+                const warehouse = s.bondedWarehouse || 'Unknown';
+                if (!acc[warehouse]) acc[warehouse] = { arrivedNotPicked: 0, futureArrivals: 0 };
+                
+                const isFuture = toUTC(s.ata).getTime() > todayUTC.getTime();
+                if (isFuture) {
+                    acc[warehouse].futureArrivals++;
+                } else {
+                    acc[warehouse].arrivedNotPicked++;
+                }
+            }
+            return acc;
+        }, {} as Record<string, { arrivedNotPicked: number, futureArrivals: number }>)).map(([name, counts]) => ({
+            name,
+            arrivedNotPicked: counts.arrivedNotPicked,
+            futureArrivals: counts.futureArrivals,
+            total: counts.arrivedNotPicked + counts.futureArrivals
+        })).sort((a, b) => b.total - a.total),
         romaneioDistribution: Object.entries(shipments.reduce((acc, s) => {
             const status = s.madeRomaneio || 'PENDING';
             acc[status] = (acc[status] || 0) + 1;

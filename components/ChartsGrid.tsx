@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { ChartData } from '../types';
+import { ChartData, Shipment } from '../types';
 import {
     BarChart,
     Bar,
@@ -21,10 +21,12 @@ import { currencyFormatter } from '../utils/formatters';
 
 interface ChartsGridProps {
     data: ChartData;
+    shipments: Shipment[];
     onLeadTimeClick?: (data: any) => void;
     onCargoReadyClick?: (data: any) => void;
     onAtaClick?: (data: any) => void;
     onRampUpClick?: (data: any) => void;
+    onBondedInventoryClick?: (data: any, type?: 'arrivedNotPicked' | 'futureArrivals') => void;
 }
 
 const chartColors = [
@@ -159,9 +161,54 @@ const ChartContainer: React.FC<{
     );
 };
 
-const ChartsGrid: React.FC<ChartsGridProps> = ({ data, onLeadTimeClick, onCargoReadyClick, onAtaClick, onRampUpClick }) => {
+const getISOWeek = (date: Date) => {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+    return { week: weekNo, year: d.getUTCFullYear() };
+};
+
+const ChartsGrid: React.FC<ChartsGridProps> = ({ data, onLeadTimeClick, onCargoReadyClick, onAtaClick, onRampUpClick, onBondedInventoryClick }) => {
     const [maximizedChart, setMaximizedChart] = useState<string | null>(null);
     const [scenario, setScenario] = useState<number | ''>(150);
+    const [cargoReadyViewMode, setCargoReadyViewMode] = useState<'days' | 'weeks'>('days');
+
+    const cargoReadyData = useMemo(() => {
+        if (cargoReadyViewMode === 'days') return data.cargoReadyComparison;
+
+        const weeklyMap = new Map<string, any>();
+        
+        data.cargoReadyComparison.forEach(day => {
+            if (!day.date) return;
+            const d = new Date(day.date);
+            const { week, year } = getISOWeek(d);
+            const weekKey = `W${week} - ${year}`;
+            
+            if (!weeklyMap.has(weekKey)) {
+                weeklyMap.set(weekKey, {
+                    label: weekKey,
+                    date: d,
+                    readyCount: 0,
+                    deliveredCount: 0,
+                    ataCount: 0,
+                    runningBalance: 0,
+                    isWeekend: false
+                });
+            }
+            
+            const weekData = weeklyMap.get(weekKey);
+            weekData.readyCount += day.readyCount;
+            weekData.deliveredCount += day.deliveredCount;
+            weekData.ataCount += day.ataCount;
+            // For running balance, we want the balance at the end of the week.
+            // Since data is sorted by day, the last day of the week will overwrite this.
+            weekData.runningBalance = day.runningBalance; 
+        });
+
+        return Array.from(weeklyMap.values()).sort((a, b) => a.date.getTime() - b.date.getTime());
+    }, [data.cargoReadyComparison, cargoReadyViewMode]);
 
     const rampUpDataWithScenarios = useMemo(() => {
         const INITIAL_BACKLOG = 2400; // <-- adjust to real yard inventory
@@ -458,6 +505,9 @@ const ChartsGrid: React.FC<ChartsGridProps> = ({ data, onLeadTimeClick, onCargoR
                         <Bar dataKey="capacity" name="Capacity" fill="#f1f5f9" barSize={isMaximized ? 60 : 40} radius={[8,8,0,0]}>
                             <LabelList dataKey="capacity" position="top" fontSize={labelSize} fill="#94a3b8" fontWeight={900} />
                         </Bar>
+                        <Bar dataKey="arrived" name="Arrived (ETA)" fill="#3b82f6" barSize={isMaximized ? 40 : 25} radius={[8,8,0,0]}>
+                            <LabelList dataKey="arrived" position="top" fontSize={labelSize} fill="#3b82f6" fontWeight={900} />
+                        </Bar>
                         <Bar dataKey="value" name="Picked" fill="#334155" barSize={isMaximized ? 40 : 25} radius={[8,8,0,0]}>
                             <LabelList dataKey="value" position="top" fontSize={labelSize} fill="#1e293b" fontWeight={900} />
                         </Bar>
@@ -474,8 +524,42 @@ const ChartsGrid: React.FC<ChartsGridProps> = ({ data, onLeadTimeClick, onCargoR
                         <Bar dataKey="placed" name="Placed in Bonded" fill="#e2e8f0" barSize={isMaximized ? 50 : 35} radius={[8,8,0,0]}>
                             <LabelList dataKey="placed" position="top" fontSize={labelSize} fill="#64748b" fontWeight={900} />
                         </Bar>
+                        <Bar dataKey="arrived" name="Arrived (ETA)" fill="#3b82f6" barSize={isMaximized ? 40 : 25} radius={[8,8,0,0]}>
+                            <LabelList dataKey="arrived" position="top" fontSize={labelSize} fill="#3b82f6" fontWeight={900} />
+                        </Bar>
                         <Bar dataKey="picked" name="Real Picked Up" fill="#0f172a" barSize={isMaximized ? 35 : 25} radius={[8,8,0,0]}>
                             <LabelList dataKey="picked" position="top" fontSize={labelSize} fill="#1e293b" fontWeight={900} />
+                        </Bar>
+                    </BarChart>
+                );
+            case 'bonded_inventory':
+                return (
+                    <BarChart data={data.bondedInventory} margin={{ top: 35, right: 30, left: 20, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                        <XAxis dataKey="name" tick={{ fontSize: labelSize, fontWeight: 700, fill: '#94a3b8' }} axisLine={false} />
+                        <YAxis tick={{ fontSize: labelSize, fontWeight: 700, fill: '#94a3b8' }} axisLine={false} />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Legend wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', paddingTop: '10px' }} />
+                        <Bar 
+                            dataKey="arrivedNotPicked" 
+                            name="Arrived Already" 
+                            fill="#ef4444" 
+                            stackId="a"
+                            barSize={isMaximized ? 40 : 25} 
+                            onClick={(data: any) => onBondedInventoryClick && onBondedInventoryClick(data, 'arrivedNotPicked')}
+                            style={{ cursor: 'pointer' }}
+                        />
+                        <Bar 
+                            dataKey="futureArrivals" 
+                            name="Future Arrivals" 
+                            fill="#fca5a5" 
+                            stackId="a"
+                            barSize={isMaximized ? 40 : 25} 
+                            radius={[8,8,0,0]}
+                            onClick={(data: any) => onBondedInventoryClick && onBondedInventoryClick(data, 'futureArrivals')}
+                            style={{ cursor: 'pointer' }}
+                        >
+                            <LabelList dataKey="total" position="top" fontSize={labelSize} fill="#ef4444" fontWeight={900} />
                         </Bar>
                     </BarChart>
                 );
@@ -511,7 +595,7 @@ const ChartsGrid: React.FC<ChartsGridProps> = ({ data, onLeadTimeClick, onCargoR
                 );
             case 'cargo_ready_comparison':
                 return (
-                    <ComposedChart data={data.cargoReadyComparison} margin={{ top: 20, right: 20, left: 10, bottom: 30 }}>
+                    <ComposedChart data={cargoReadyData} margin={{ top: 20, right: 20, left: 10, bottom: 30 }}>
                         <defs>
                             <linearGradient id="colorBalance" x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="5%" stopColor="#7C3AED" stopOpacity={0.1}/>
@@ -523,11 +607,11 @@ const ChartsGrid: React.FC<ChartsGridProps> = ({ data, onLeadTimeClick, onCargoR
                             dataKey="label" 
                             tick={(tickProps: any) => {
                                 const { x, y, payload } = tickProps;
-                                const entry = data.cargoReadyComparison.find(d => d.label === payload.value);
+                                const entry = cargoReadyData.find(d => d.label === payload.value);
                                 const isWeekend = entry?.isWeekend;
                                 
                                 let displayLabel = payload.value;
-                                if (entry?.date) {
+                                if (cargoReadyViewMode === 'days' && entry?.date) {
                                     const d = new Date(entry.date);
                                     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
                                     displayLabel = `${days[d.getDay()]} ${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}`;
@@ -686,6 +770,7 @@ const ChartsGrid: React.FC<ChartsGridProps> = ({ data, onLeadTimeClick, onCargoR
             case 'monthly_trend': return { title: "Monthly Performance & Volume", subtitle: "Tracking monthly shipment totals and delay counts." };
             case 'terminal_capacity': return { title: "Terminal Picking & Capacity", subtitle: "Current warehouse volume vs maximum reported storage capacity." };
             case 'bonded_flow': return { title: "Bonded Flow Analysis", subtitle: "Total containers placed in bonded area vs successfully picked units." };
+            case 'bonded_inventory': return { title: "Arrived & Not Picked per Bonded Warehouse", subtitle: "Inventory levels: containers arrived but not yet picked up." };
             case 'carrier_leadtime': return { title: "Carrier Performance (Lead Time)", subtitle: "Average transit days from port departure to final warehouse delivery." };
             case 'romaneio_distribution': return { title: "Romaneio Status Distribution", subtitle: "Tracking of shipments with completed vs pending romaneios (Column BD)." };
             case 'cargo_ready_comparison': return { title: "Cargo Ready vs Delivered Comparison", subtitle: "Comparison between vessel arrivals (ATA), containers ready (Column Z), and units actually delivered per day." };
@@ -734,6 +819,58 @@ const ChartsGrid: React.FC<ChartsGridProps> = ({ data, onLeadTimeClick, onCargoR
                     onMaximize={() => setMaximizedChart('carrier_breakdown')}
                 >
                     {renderChartContent('carrier_breakdown')}
+                </ChartContainer>
+            </div>
+
+            <div className="export-section lg:col-span-2">
+                <ChartContainer 
+                    title={getChartMeta('cargo_ready_comparison').title} 
+                    subtitle={getChartMeta('cargo_ready_comparison').subtitle}
+                    headerRight={
+                        <div className="flex bg-slate-100 p-1 rounded-xl">
+                            <button 
+                                onClick={() => setCargoReadyViewMode('days')}
+                                className={`px-3 py-1 text-[10px] font-black uppercase rounded-lg transition-all ${cargoReadyViewMode === 'days' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                            >
+                                Days
+                            </button>
+                            <button 
+                                onClick={() => setCargoReadyViewMode('weeks')}
+                                className={`px-3 py-1 text-[10px] font-black uppercase rounded-lg transition-all ${cargoReadyViewMode === 'weeks' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                            >
+                                Weeks
+                            </button>
+                        </div>
+                    }
+                    height={400}
+                    onMaximize={() => setMaximizedChart('cargo_ready_comparison')}
+                >
+                    {renderChartContent('cargo_ready_comparison')}
+                </ChartContainer>
+            </div>
+
+            <div className="export-section lg:col-span-2">
+                <ChartContainer 
+                    title={getChartMeta('ramp_up_plan').title} 
+                    subtitle={getChartMeta('ramp_up_plan').subtitle}
+                    headerRight={
+                        <div className="flex gap-4 items-center">
+                            <div className="flex items-center gap-2">
+                                <label className="text-[10px] font-black uppercase text-slate-500">Scenario (/day):</label>
+                                <input 
+                                    type="number" 
+                                    className="w-16 px-2 py-1 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    value={scenario}
+                                    onChange={(e) => setScenario(e.target.value === '' ? '' : Number(e.target.value))}
+                                    placeholder="Qty"
+                                />
+                            </div>
+                        </div>
+                    }
+                    height={400}
+                    onMaximize={() => setMaximizedChart('ramp_up_plan')}
+                >
+                    {renderChartContent('ramp_up_plan')}
                 </ChartContainer>
             </div>
 
@@ -820,6 +957,18 @@ const ChartsGrid: React.FC<ChartsGridProps> = ({ data, onLeadTimeClick, onCargoR
                 </ChartContainer>
             </div>
 
+            {/* Arrived Not Picked Chart */}
+            <div className="export-section lg:col-span-2">
+                <ChartContainer 
+                    title={getChartMeta('bonded_inventory').title} 
+                    subtitle={getChartMeta('bonded_inventory').subtitle}
+                    height={400}
+                    onMaximize={() => setMaximizedChart('bonded_inventory')}
+                >
+                    {renderChartContent('bonded_inventory')}
+                </ChartContainer>
+            </div>
+
             <div className="export-section lg:col-span-2">
                 <ChartContainer 
                     title={getChartMeta('carrier_leadtime').title} 
@@ -842,42 +991,6 @@ const ChartsGrid: React.FC<ChartsGridProps> = ({ data, onLeadTimeClick, onCargoR
                 </ChartContainer>
             </div>
 
-            <div className="export-section lg:col-span-2">
-                <ChartContainer 
-                    title={getChartMeta('cargo_ready_comparison').title} 
-                    subtitle={getChartMeta('cargo_ready_comparison').subtitle}
-                    height={400}
-                    onMaximize={() => setMaximizedChart('cargo_ready_comparison')}
-                >
-                    {renderChartContent('cargo_ready_comparison')}
-                </ChartContainer>
-            </div>
-
-            <div className="export-section lg:col-span-2">
-                <ChartContainer 
-                    title={getChartMeta('ramp_up_plan').title} 
-                    subtitle={getChartMeta('ramp_up_plan').subtitle}
-                    headerRight={
-                        <div className="flex gap-4 items-center">
-                            <div className="flex items-center gap-2">
-                                <label className="text-[10px] font-black uppercase text-slate-500">Scenario (/day):</label>
-                                <input 
-                                    type="number" 
-                                    className="w-16 px-2 py-1 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                    value={scenario}
-                                    onChange={(e) => setScenario(e.target.value === '' ? '' : Number(e.target.value))}
-                                    placeholder="Qty"
-                                />
-                            </div>
-                        </div>
-                    }
-                    height={400}
-                    onMaximize={() => setMaximizedChart('ramp_up_plan')}
-                >
-                    {renderChartContent('ramp_up_plan')}
-                </ChartContainer>
-            </div>
-
             {maximizedChart && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4 sm:p-10 animate-in fade-in duration-300">
                     <div className="bg-white w-full max-w-[1400px] h-full max-h-[850px] rounded-[3rem] shadow-2xl flex flex-col overflow-hidden relative border border-slate-200">
@@ -892,6 +1005,22 @@ const ChartsGrid: React.FC<ChartsGridProps> = ({ data, onLeadTimeClick, onCargoR
                                 </p>
                             </div>
                             <div className="flex items-center gap-6">
+                                {maximizedChart === 'cargo_ready_comparison' && (
+                                    <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
+                                        <button 
+                                            onClick={() => setCargoReadyViewMode('days')}
+                                            className={`px-4 py-2 text-xs font-black uppercase rounded-xl transition-all ${cargoReadyViewMode === 'days' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                                        >
+                                            Days
+                                        </button>
+                                        <button 
+                                            onClick={() => setCargoReadyViewMode('weeks')}
+                                            className={`px-4 py-2 text-xs font-black uppercase rounded-xl transition-all ${cargoReadyViewMode === 'weeks' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                                        >
+                                            Weeks
+                                        </button>
+                                    </div>
+                                )}
                                 {maximizedChart === 'ramp_up_plan' && (
                                     <div className="flex gap-4 items-center bg-slate-50 p-3 rounded-2xl border border-slate-200">
                                         <div className="flex items-center gap-2">

@@ -358,7 +358,18 @@ export const calculateDashboardData = (shipments: Shipment[]): { kpis: KpiData, 
         return diffDays >= 0 && diffDays <= 15;
     }).length;
     
-    const dailyData: Record<string, { date: Date; label: string; containerCount: number; lateCount: number; isWeekend: boolean; goalReached: boolean; achievementPct: number; carrierVolume: Record<string, number>; carrierLate: Record<string, number> }> = shipments.reduce((acc, s) => {
+    const dailyData: Record<string, { 
+        date: Date; 
+        label: string; 
+        containerCount: number; 
+        lateCount: number; 
+        isWeekend: boolean; 
+        goalReached: boolean; 
+        achievementPct: number; 
+        carrierVolume: Record<string, number>; 
+        carrierLate: Record<string, number>;
+        warehousePicked: Record<string, number>;
+    }> = shipments.reduce((acc, s) => {
         if (s.deliveryByd) {
             const dateObj = new Date(s.deliveryByd);
             dateObj.setHours(0,0,0,0);
@@ -376,13 +387,17 @@ export const calculateDashboardData = (shipments: Shipment[]): { kpis: KpiData, 
                     goalReached: false,
                     achievementPct: 0,
                     carrierVolume: {},
-                    carrierLate: {}
+                    carrierLate: {},
+                    warehousePicked: {}
                 };
             }
             acc[dayKey].containerCount++;
             
             const carrier = s.carrier || 'Unknown';
             acc[dayKey].carrierVolume[carrier] = (acc[dayKey].carrierVolume[carrier] || 0) + 1;
+
+            const warehouse = s.bondedWarehouse || 'Unknown';
+            acc[dayKey].warehousePicked[warehouse] = (acc[dayKey].warehousePicked[warehouse] || 0) + 1;
 
             if (s.clientDeliveryVariance !== null && s.clientDeliveryVariance > 0) {
                 acc[dayKey].lateCount++;
@@ -521,8 +536,14 @@ export const calculateDashboardData = (shipments: Shipment[]): { kpis: KpiData, 
     let bondedDwellGt7 = 0;
     let bondedDwellGt10 = 0;
     let bondedDwellMax = 0;
+    let totalFreight = 0;
+    let totalTaxes = 0;
+    let totalExtra = 0;
 
     shipments.forEach((s) => {
+        totalFreight += (s.totalCost || 0);
+        totalTaxes += (s.taxCost || 0);
+        totalExtra += (s.extraCost || 0);
         const status = (s.status || '').toUpperCase(); // Assuming status exists, or use a fallback
         const term = (s.bondedWarehouse || '').toUpperCase();
 
@@ -595,11 +616,16 @@ export const calculateDashboardData = (shipments: Shipment[]): { kpis: KpiData, 
         bondedDwellCount,
         bondedDwellGt7,
         bondedDwellGt10,
-        bondedDwellMax
+        bondedDwellMax,
+        totalTco: totalFreight + totalTaxes + totalExtra + totalDemurrage,
+        totalFreight,
+        totalTaxes,
+        totalExtra
     };
     
     const leadTimeTrend = (Object.values(dailyData) as any[]).sort((a,b) => a.date.getTime() - b.date.getTime());
     const dailyCarrierBreakdown = leadTimeTrend.map(day => ({ date: day.date, label: day.label, total: day.containerCount, ...day.carrierVolume }));
+    const dailyWarehousePickedBreakdown = leadTimeTrend.map(day => ({ date: day.date, label: day.label, total: day.containerCount, ...day.warehousePicked }));
     const dailyCarrierDelayBreakdown = leadTimeTrend.map(day => ({ date: day.date, label: day.label, totalLate: day.lateCount, ...day.carrierLate }));
     const dailyDepotReturnBreakdown = Object.values(dailyDepotData).sort((a,b) => a.date.getTime() - b.date.getTime()).map(day => ({ date: day.date, label: day.label, total: day.total, ...day.depots }));
 
@@ -653,6 +679,7 @@ export const calculateDashboardData = (shipments: Shipment[]): { kpis: KpiData, 
         pipeline,
         leadTimeTrend,
         dailyCarrierBreakdown,
+        dailyWarehousePickedBreakdown,
         dailyCarrierDelayBreakdown,
         dailyDepotReturnBreakdown,
         monthlyStatus,
@@ -724,9 +751,104 @@ export const calculateDashboardData = (shipments: Shipment[]): { kpis: KpiData, 
             acc[status] = (acc[status] || 0) + 1;
             return acc;
         }, {} as Record<string, number>)).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value),
+        pqrAnalysis: [],
         cargoReadyComparison: [],
-        rampUpPlan: []
+        rampUpPlan: [],
+        tcoBreakdown: [
+            { name: 'Freight', value: totalFreight, color: '#3b82f6' },
+            { name: 'Taxes', value: totalTaxes, color: '#10b981' },
+            { name: 'Extra Costs', value: totalExtra, color: '#f59e0b' },
+            { name: 'Demurrage', value: totalDemurrage, color: '#ef4444' }
+        ],
+        tcoTrend: [],
+        kraljicMatrix: []
     };
+
+    const tcoTrendMap: Record<string, { tco: number; freight: number; taxes: number; extra: number; demurrage: number; sortKey: number }> = {};
+    shipments.forEach(s => {
+        const date = s.ata || s.deliveryByd || s.estimatedDelivery;
+        if (date) {
+            const { week, year } = getISOWeek(date);
+            const period = `W${week} - ${year}`;
+            if (!tcoTrendMap[period]) {
+                tcoTrendMap[period] = { tco: 0, freight: 0, taxes: 0, extra: 0, demurrage: 0, sortKey: year * 100 + week };
+            }
+            const f = s.totalCost || 0;
+            const t = s.taxCost || 0;
+            const e = s.extraCost || 0;
+            const d = s.demurrageCost || 0;
+            tcoTrendMap[period].tco += (f + t + e + d);
+            tcoTrendMap[period].freight += f;
+            tcoTrendMap[period].taxes += t;
+            tcoTrendMap[period].extra += e;
+            tcoTrendMap[period].demurrage += d;
+        }
+    });
+    charts.tcoTrend = Object.entries(tcoTrendMap)
+        .map(([period, stats]) => ({ period, ...stats }))
+        .sort((a, b) => a.sortKey - b.sortKey);
+
+    // Calculate PQR Analysis
+    const pqrMap: Record<string, { count: number; totalLeadTime: number; leadTimeCount: number; totalCost: number }> = {};
+    shipments.forEach(s => {
+        const model = s.cargoModel || 'Other';
+        if (!pqrMap[model]) {
+            pqrMap[model] = { count: 0, totalLeadTime: 0, leadTimeCount: 0, totalCost: 0 };
+        }
+        pqrMap[model].count++;
+        if (s.portToDelivery !== null) {
+            pqrMap[model].totalLeadTime += s.portToDelivery;
+            pqrMap[model].leadTimeCount++;
+        }
+        pqrMap[model].totalCost += (s.totalCost || 0);
+    });
+
+    const pqrList = Object.entries(pqrMap).map(([name, stats]) => ({
+        name,
+        value: stats.count,
+        percentage: (stats.count / totalShipments) * 100,
+        avgLeadTime: stats.leadTimeCount > 0 ? stats.totalLeadTime / stats.leadTimeCount : null,
+        totalCost: stats.totalCost
+    })).sort((a, b) => b.value - a.value);
+
+    let cumulativePercentage = 0;
+    charts.pqrAnalysis = pqrList.map(item => {
+        cumulativePercentage += item.percentage;
+        let classification: 'P' | 'Q' | 'R' = 'R';
+        if (cumulativePercentage <= 80) classification = 'P';
+        else if (cumulativePercentage <= 95) classification = 'Q';
+        else classification = 'R';
+        
+        return {
+            ...item,
+            classification,
+            percentage: parseFloat(item.percentage.toFixed(1))
+        };
+    }) as any;
+
+    // Calculate Kraljic Matrix
+    const validPqrItems = charts.pqrAnalysis.filter(item => item.avgLeadTime !== null);
+    const avgImpact = validPqrItems.reduce((sum, item) => sum + item.totalCost, 0) / (validPqrItems.length || 1);
+    const avgRisk = validPqrItems.reduce((sum, item) => sum + (item.avgLeadTime || 0), 0) / (validPqrItems.length || 1);
+
+    charts.kraljicMatrix = charts.pqrAnalysis.map(item => {
+        const impact = item.totalCost;
+        const risk = item.avgLeadTime || 0;
+        
+        let quadrant: 'Strategic' | 'Leverage' | 'Bottleneck' | 'Non-critical';
+        if (impact >= avgImpact && risk >= avgRisk) quadrant = 'Strategic';
+        else if (impact >= avgImpact && risk < avgRisk) quadrant = 'Leverage';
+        else if (impact < avgImpact && risk >= avgRisk) quadrant = 'Bottleneck';
+        else quadrant = 'Non-critical';
+
+        return {
+            name: item.name,
+            impact,
+            risk,
+            volume: item.value,
+            quadrant
+        };
+    });
 
     // Calculate Cargo Ready Comparison
     const cargoReadyMap: Record<string, { date: Date; label: string; readyCount: number; deliveredCount: number; ataCount: number; isWeekend: boolean }> = {};

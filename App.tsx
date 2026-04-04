@@ -20,13 +20,16 @@ import ChartDetailsModal from "./components/ChartDetailsModal";
 import DailyLotBreakdown from "./components/DailyLotBreakdown";
 import OperationalLotGrid from "./components/OperationalLotGrid";
 import PipelineAnalysis from "./components/PipelineAnalysis";
+import GoodsAnalysis from "./components/GoodsAnalysis";
+import TcoAnalysis from "./components/TcoAnalysis";
+import KraljicMatrix from "./components/KraljicMatrix";
 
 // Utils
 import { processRawData, calculateDashboardData, toUTC, getISOWeek } from "./utils/dataProcessor";
 import { currencyFormatter } from "./utils/formatters";
 import { Shipment, SortConfig, PipelineWeek } from "./types";
 
-type MainView = "performance" | "benchmark" | "estimative" | "warehouse_sim";
+type MainView = "performance" | "benchmark" | "estimative" | "warehouse_sim" | "goods_analysis" | "tco_analysis" | "kraljic_matrix";
 
 const isValidDate = (d: any): d is Date => d instanceof Date && !isNaN(d.getTime());
 
@@ -401,6 +404,27 @@ export default function App() {
             <span className="material-icons text-sm">warehouse</span>
             Bonded Warehouse
           </button>
+          <button 
+            onClick={() => setMainView("goods_analysis")}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${mainView === 'goods_analysis' ? 'bg-red-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
+          >
+            <span className="material-icons text-sm">inventory_2</span>
+            Goods Analysis
+          </button>
+          <button 
+            onClick={() => setMainView("tco_analysis")}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${mainView === 'tco_analysis' ? 'bg-red-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
+          >
+            <span className="material-icons text-sm">monetization_on</span>
+            TCO Analysis
+          </button>
+          <button 
+            onClick={() => setMainView("kraljic_matrix")}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${mainView === 'kraljic_matrix' ? 'bg-red-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
+          >
+            <span className="material-icons text-sm">grid_view</span>
+            Kraljic Matrix
+          </button>
         </div>
 
         <div className="flex items-center gap-3">
@@ -563,6 +587,25 @@ export default function App() {
                     </div>
                   </section>
 
+                  <section id="tco-summary" className="export-section grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+                    <div className="bg-slate-900 text-white rounded-2xl p-6 shadow-lg">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TOTAL TCO</div>
+                      <div className="text-2xl font-black mt-2">{currencyFormatter.format(kpis.totalTco)}</div>
+                    </div>
+                    <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">FREIGHT COST</div>
+                      <div className="text-2xl font-black text-slate-800 mt-2">{currencyFormatter.format(kpis.totalFreight)}</div>
+                    </div>
+                    <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TAXES & DUTIES</div>
+                      <div className="text-2xl font-black text-slate-800 mt-2">{currencyFormatter.format(kpis.totalTaxes)}</div>
+                    </div>
+                    <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">DEMURRAGE & EXTRA</div>
+                      <div className="text-2xl font-black text-red-600 mt-2">{currencyFormatter.format(kpis.totalDemurrage + kpis.totalExtra)}</div>
+                    </div>
+                  </section>
+
                  <div className="no-export">
                    <DashboardFilters 
                       carriers={carriersList} analysts={analystsList} cargos={cargosList} containerTypes={containerTypesList} incoterms={incotermsList} romaneioStatuses={romaneioStatusesList} years={yearsList}
@@ -629,16 +672,17 @@ export default function App() {
                                    });
                                  }}
                                  onRampUpClick={(d) => {
-                                   if (!d.period) return;
+                                   const period = d?.period || d?.payload?.period;
+                                   if (!period) return;
                                    const matching = filteredShipments.filter(s => {
                                      const date = s.ata || s.estimatedDelivery;
                                      if (!date) return false;
                                      const { week, year } = getISOWeek(date);
-                                     return `W${week} - ${year}` === d.period;
+                                     return `W${week} - ${year}` === period;
                                    });
                                    setModalData({
                                      isOpen: true,
-                                     weekLabel: `Ramp-Up Plan - ${d.period}`,
+                                     weekLabel: `Ramp-Up Plan - ${period}`,
                                      shipments: matching
                                    });
                                  }}
@@ -709,6 +753,12 @@ export default function App() {
                </>
              )}
           </div>
+        ) : mainView === "goods_analysis" ? (
+          <GoodsAnalysis data={charts} shipments={filteredShipments} />
+        ) : mainView === "tco_analysis" ? (
+          <TcoAnalysis data={charts} shipments={filteredShipments} />
+        ) : mainView === "kraljic_matrix" ? (
+          <KraljicMatrix data={charts} shipments={filteredShipments} />
         ) : mainView === "benchmark" ? (
           <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <header className="mb-2 flex flex-col justify-between gap-6 md:flex-row md:items-center print:mb-4 no-export">

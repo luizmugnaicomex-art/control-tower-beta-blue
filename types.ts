@@ -164,6 +164,10 @@ export interface KpiData {
   bondedDwellGt7: number;
   bondedDwellGt10: number;
   bondedDwellMax: number;
+  totalTco: number;
+  totalFreight: number;
+  totalTaxes: number;
+  totalExtra: number;
 }
 
 export interface ChartData {
@@ -178,6 +182,12 @@ export interface ChartData {
     achievementPct: number;
   }>;
   dailyCarrierBreakdown: Array<{
+    date: Date;
+    label: string;
+    total: number;
+    [key: string]: any;
+  }>;
+  dailyWarehousePickedBreakdown: Array<{
     date: Date;
     label: string;
     total: number;
@@ -222,6 +232,14 @@ export interface ChartData {
   bondedFlow: Array<{ name: string; placed: number; picked: number; arrived: number }>; // New Chart
   bondedInventory: Array<{ name: string; arrivedNotPicked: number; futureArrivals: number; total: number }>;
   romaneioDistribution: Array<{ name: string; value: number }>;
+  pqrAnalysis: Array<{
+    name: string;
+    value: number;
+    percentage: number;
+    classification: 'P' | 'Q' | 'R';
+    avgLeadTime: number | null;
+    totalCost: number;
+  }>;
   cargoReadyComparison: Array<{
     date: Date;
     label: string;
@@ -237,6 +255,15 @@ export interface ChartData {
     projectedArrivals: number;
     cumulativeArrivals: number;
     sortKey: number;
+  }>;
+  tcoBreakdown: Array<{ name: string; value: number; color: string }>;
+  tcoTrend: Array<{ period: string; tco: number; freight: number; taxes: number; extra: number; demurrage: number }>;
+  kraljicMatrix: Array<{
+    name: string;
+    impact: number;
+    risk: number;
+    volume: number;
+    quadrant: 'Strategic' | 'Leverage' | 'Bottleneck' | 'Non-critical';
   }>;
 }
 

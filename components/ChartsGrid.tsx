@@ -387,6 +387,64 @@ const ChartsGrid: React.FC<ChartsGridProps> = ({ data, onLeadTimeClick, onCargoR
         </div>
     );
 
+    const depotStats = useMemo(() => {
+        const sums: Record<string, number> = {};
+        const activeDays: Record<string, number> = {};
+        const totalDays = data.dailyDepotReturnBreakdown.length || 1;
+        
+        depotNames.forEach(name => {
+            sums[name] = 0;
+            activeDays[name] = 0;
+        });
+
+        data.dailyDepotReturnBreakdown.forEach(day => {
+            depotNames.forEach(name => {
+                if (day[name]) {
+                    sums[name] += day[name];
+                    activeDays[name] += 1;
+                }
+            });
+        });
+
+        return depotNames.map(name => {
+            const total = sums[name];
+            const active = activeDays[name] || 0;
+            const activeAvg = active > 0 ? Math.round(total / active) : 0;
+            const fullAvg = Math.round(total / totalDays);
+            const inconsistent = active > 0 && active < totalDays * 0.5;
+
+            return {
+                name,
+                total,
+                activeDays: active,
+                totalDays,
+                activeAvg,
+                fullAvg,
+                inconsistent
+            };
+        }).sort((a, b) => b.activeAvg - a.activeAvg);
+    }, [data.dailyDepotReturnBreakdown, depotNames]);
+
+    const renderDepotStats = () => (
+        <div className="flex flex-wrap gap-2 justify-end">
+            {depotStats.map((depot, index) => {
+                const color = chartColors[depotNames.indexOf(depot.name) % chartColors.length];
+                return (
+                    <div 
+                        key={depot.name} 
+                        className={`flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-lg border ${depot.inconsistent ? 'border-red-300 bg-red-50' : 'border-slate-100'}`}
+                        title={`Total: ${depot.total} | Active Days: ${depot.activeDays}/${depot.totalDays} | Full Period Avg: ${depot.fullAvg} | Active Day Avg: ${depot.activeAvg}`}
+                    >
+                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }}></div>
+                        <span className="text-[10px] font-black uppercase text-slate-500">{depot.name}:</span>
+                        <span className="text-xs font-black text-slate-800">{depot.activeAvg} AVG</span>
+                        {depot.inconsistent && <span className="text-[10px] ml-1" title="Inconsistent return pattern (active < 50% of days)">⚠️</span>}
+                    </div>
+                );
+            })}
+        </div>
+    );
+
     const renderChartContent = (key: string, isMaximized: boolean = false) => {
         const labelSize = isMaximized ? 12 : 10;
         const tickSize = isMaximized ? 11 : 9;
@@ -1019,6 +1077,7 @@ const ChartsGrid: React.FC<ChartsGridProps> = ({ data, onLeadTimeClick, onCargoR
                     subtitle={getChartMeta('daily_depot_return').subtitle}
                     height={400}
                     onMaximize={() => setMaximizedChart('daily_depot_return')}
+                    headerRight={renderDepotStats()}
                 >
                     {renderChartContent('daily_depot_return')}
                 </ChartContainer>
@@ -1163,6 +1222,7 @@ const ChartsGrid: React.FC<ChartsGridProps> = ({ data, onLeadTimeClick, onCargoR
                                     </div>
                                 )}
                                 {maximizedChart === 'daily_warehouse_picked' && renderWarehouseStats()}
+                                {maximizedChart === 'daily_depot_return' && renderDepotStats()}
                                 <button 
                                     onClick={() => setMaximizedChart(null)}
                                     className="bg-slate-50 hover:bg-slate-100 text-slate-400 hover:text-slate-600 p-3 rounded-2xl transition-all shadow-sm"
